@@ -1,6 +1,48 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Learn From Ared - Course Selling Platform
 
-## Getting Started
+This is a course selling web application built with Next.js, Firebase, HeroUI, and Razorpay. It allows instructors to create and sell courses, and students to browse, purchase, and access course content.
+
+## Tech Stack
+
+- **Frontend**: Next.js 15 with App Router, React 19
+- **UI Library**: HeroUI (successor to NextUI) with Tailwind CSS
+- **Backend**: Firebase (Auth, Firestore, Storage, Functions)
+- **Payment**: Razorpay
+- **Forms**: React Hook Form with Zod validation
+- **TypeScript**: Full type safety
+
+## Setup Instructions
+
+### 1. Environment Configuration
+
+Copy the example environment file and fill in your credentials:
+
+```bash
+cp .env.example .env.local
+```
+
+Update `.env.local` with your actual Firebase and Razorpay credentials.
+
+### 2. Firebase Setup
+
+1. Create a new Firebase project at [Firebase Console](https://console.firebase.google.com/)
+2. Enable Authentication, Firestore, and Storage
+3. Get your Firebase config from Project Settings
+4. Generate a service account key for Firebase Admin SDK
+
+### 3. Razorpay Setup
+
+1. Create a Razorpay account at [Razorpay Dashboard](https://dashboard.razorpay.com/)
+2. Get your API keys from the dashboard
+3. Add them to your environment variables
+
+### 4. Install Dependencies
+
+```bash
+npm install
+```
+
+### 5. Run Development Server
 
 First, run the development server:
 
