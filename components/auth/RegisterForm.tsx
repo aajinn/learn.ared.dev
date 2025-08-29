@@ -100,8 +100,11 @@ export default function RegisterForm({
     };
 
     const handleRoleChange = (keys: unknown) => {
-        const selectedKey = Array.from(keys)[0] as 'student' | 'instructor';
-        setValue('role', selectedKey);
+        const keysSet = keys as Set<string>;
+        if (keysSet && keysSet.size > 0) {
+            const selectedKey = Array.from(keysSet)[0] as 'student' | 'instructor';
+            setValue('role', selectedKey);
+        }
     };
 
     return (
