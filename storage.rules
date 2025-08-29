@@ -1,0 +1,116 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+             firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
+             firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    function isInstructor() {
+      return isAuthenticated() && 
+             firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
+             firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'instructor';
+    }
+    
+    function isValidImageFile() {
+      return resource.contentType.matches('image/.*') &&
+             resource.size < 5 * 1024 * 1024; // 5MB limit
+    }
+    
+    function isValidVideoFile() {
+      return resource.contentType.matches('video/.*') &&
+             resource.size < 500 * 1024 * 1024; // 500MB limit
+    }
+    
+    function isValidDocumentFile() {
+      return resource.contentType in ['application/pdf', 'text/plain', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'] &&
+             resource.size < 10 * 1024 * 1024; // 10MB limit
+    }
+
+    // User profile images
+    match /users/{userId}/profile/{fileName} {
+      // Users can read and write their own profile images
+      allow read: if true; // Profile images are public
+      allow write: if isOwner(userId) && isValidImageFile();
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    // Course thumbnails and images
+    match /courses/{courseId}/images/{fileName} {
+      // Course images are publicly readable
+      allow read: if true;
+      
+      // Only course instructors and admins can upload course images
+      allow write: if (isInstructor() || isAdmin()) && isValidImageFile();
+      
+      // Only course instructors and admins can delete course images
+      allow delete: if isInstructor() || isAdmin();
+    }
+
+    // Course videos (protected content)
+    match /courses/{courseId}/videos/{fileName} {
+      // Only enrolled users, course instructors, and admins can access videos
+      allow read: if isAuthenticated() && 
+                     (firestore.exists(/databases/(default)/documents/enrollments/$(request.auth.uid + '_' + courseId)) ||
+                      firestore.exists(/databases/(default)/documents/courses/$(courseId)) &&
+                      firestore.get(/databases/(default)/documents/courses/$(courseId)).data.instructorId == request.auth.uid ||
+                      isAdmin());
+      
+      // Only course instructors and admins can upload videos
+      allow write: if (isInstructor() || isAdmin()) && isValidVideoFile();
+      
+      // Only course instructors and admins can delete videos
+      allow delete: if isInstructor() || isAdmin();
+    }
+
+    // Course documents and materials
+    match /courses/{courseId}/documents/{fileName} {
+      // Only enrolled users, course instructors, and admins can access documents
+      allow read: if isAuthenticated() && 
+                     (firestore.exists(/databases/(default)/documents/enrollments/$(request.auth.uid + '_' + courseId)) ||
+                      firestore.exists(/databases/(default)/documents/courses/$(courseId)) &&
+                      firestore.get(/databases/(default)/documents/courses/$(courseId)).data.instructorId == request.auth.uid ||
+                      isAdmin());
+      
+      // Only course instructors and admins can upload documents
+      allow write: if (isInstructor() || isAdmin()) && isValidDocumentFile();
+      
+      // Only course instructors and admins can delete documents
+      allow delete: if isInstructor() || isAdmin();
+    }
+
+    // Public assets (logos, banners, etc.)
+    match /public/{fileName} {
+      // Public assets are readable by everyone
+      allow read: if true;
+      
+      // Only admins can manage public assets
+      allow write, delete: if isAdmin();
+    }
+
+    // Temporary uploads (for processing)
+    match /temp/{userId}/{fileName} {
+      // Users can upload to their temp folder
+      allow read, write: if isOwner(userId);
+      
+      // Temp files are automatically deleted after 24 hours
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    // Default deny rule for any other paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

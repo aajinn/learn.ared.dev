@@ -1,0 +1,178 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    function isInstructor() {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'instructor';
+    }
+    
+    function isInstructorOrAdmin() {
+      return isInstructor() || isAdmin();
+    }
+    
+    function isCourseOwner(courseId) {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/courses/$(courseId)) &&
+             get(/databases/$(database)/documents/courses/$(courseId)).data.instructorId == request.auth.uid;
+    }
+    
+    function isEnrolledInCourse(courseId) {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/enrollments/$(request.auth.uid + '_' + courseId));
+    }
+
+    // Users collection rules
+    match /users/{userId} {
+      // Users can read their own profile, admins can read all
+      allow read: if isOwner(userId) || isAdmin();
+      
+      // Users can create their own profile during registration
+      allow create: if isAuthenticated() && 
+                       request.auth.uid == userId &&
+                       request.resource.data.keys().hasAll(['email', 'displayName', 'role']) &&
+                       request.resource.data.role in ['student', 'instructor'];
+      
+      // Users can update their own profile (except role), admins can update any
+      allow update: if (isOwner(userId) && 
+                       !('role' in request.resource.data.diff(resource.data).affectedKeys())) ||
+                       isAdmin();
+      
+      // Only admins can delete users
+      allow delete: if isAdmin();
+    }
+
+    // Courses collection rules
+    match /courses/{courseId} {
+      // Anyone can read published courses, instructors/admins can read all
+      allow read: if resource.data.published == true || 
+                     isCourseOwner(courseId) || 
+                     isAdmin();
+      
+      // Only instructors can create courses
+      allow create: if isInstructorOrAdmin() && 
+                       request.resource.data.instructorId == request.auth.uid &&
+                       request.resource.data.keys().hasAll(['title', 'description', 'price', 'instructorId']);
+      
+      // Course owners and admins can update courses
+      allow update: if isCourseOwner(courseId) || isAdmin();
+      
+      // Course owners and admins can delete courses
+      allow delete: if isCourseOwner(courseId) || isAdmin();
+    }
+
+    // Enrollments collection rules
+    match /enrollments/{enrollmentId} {
+      // Users can read their own enrollments, course instructors can read enrollments for their courses, admins can read all
+      allow read: if isOwner(resource.data.userId) || 
+                     isCourseOwner(resource.data.courseId) || 
+                     isAdmin();
+      
+      // Enrollments are created through payment processing (server-side)
+      // Users cannot directly create enrollments
+      allow create: if false;
+      
+      // Users can update their own progress, admins can update any
+      allow update: if (isOwner(resource.data.userId) && 
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['progress', 'completed', 'completedAt', 'updatedAt'])) ||
+                       isAdmin();
+      
+      // Only admins can delete enrollments
+      allow delete: if isAdmin();
+    }
+
+    // Payments collection rules
+    match /payments/{paymentId} {
+      // Users can read their own payments, admins can read all
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      
+      // Payments are created through server-side processing only
+      allow create: if false;
+      
+      // Payments can only be updated by server-side processing
+      allow update: if false;
+      
+      // Only admins can delete payments (for refunds)
+      allow delete: if isAdmin();
+    }
+
+    // Categories collection rules (for course categories)
+    match /categories/{categoryId} {
+      // Anyone can read categories
+      allow read: if true;
+      
+      // Only admins can manage categories
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Reviews collection rules (for course reviews)
+    match /reviews/{reviewId} {
+      // Anyone can read published reviews
+      allow read: if resource.data.published == true || 
+                     isOwner(resource.data.userId) || 
+                     isAdmin();
+      
+      // Only enrolled users can create reviews for courses they're enrolled in
+      allow create: if isAuthenticated() && 
+                       request.resource.data.userId == request.auth.uid &&
+                       isEnrolledInCourse(request.resource.data.courseId);
+      
+      // Users can update their own reviews, admins can update any
+      allow update: if isOwner(resource.data.userId) || isAdmin();
+      
+      // Users can delete their own reviews, admins can delete any
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    // Analytics collection rules (for course and platform analytics)
+    match /analytics/{document=**} {
+      // Only admins and course owners can read analytics
+      allow read: if isAdmin() || 
+                     (resource.data.keys().hasAny(['instructorId']) && 
+                      resource.data.instructorId == request.auth.uid);
+      
+      // Analytics are created/updated by server-side functions only
+      allow create, update: if false;
+      
+      // Only admins can delete analytics
+      allow delete: if isAdmin();
+    }
+
+    // Notifications collection rules
+    match /notifications/{notificationId} {
+      // Users can read their own notifications
+      allow read: if isOwner(resource.data.userId);
+      
+      // Notifications are created by server-side functions
+      allow create: if false;
+      
+      // Users can mark their notifications as read
+      allow update: if isOwner(resource.data.userId) && 
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'readAt']);
+      
+      // Users can delete their own notifications
+      allow delete: if isOwner(resource.data.userId);
+    }
+
+    // Default deny rule for any other collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

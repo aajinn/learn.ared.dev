@@ -40,5 +40,15 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# Firebase
+firebase-debug.log*
+firebase-export/
+firebase-sample-data.json
+.firebase/
+
+# Testing
+coverage/
+*.lcov
+
 .kiro
 .vscode
